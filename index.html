@@ -52,7 +52,7 @@
                 </div>
                 <div>
                     <h1 class="text-xl font-bold text-slate-900 tracking-tight">STEM Project Judging Portal</h1>
-                    <p class="text-xs text-slate-500">Live Evaluation System & Leaderboard</p>
+                    <p class="text-xs text-slate-500">Cloud Synced Evaluation System & Leaderboard</p>
                 </div>
             </div>
             
@@ -77,6 +77,7 @@
             <button onclick="hideToast()" class="text-slate-400 hover:text-slate-600 font-bold">&times;</button>
         </div>
 
+        <!-- Evaluation Form Tab -->
         <div id="tabContentEvaluation">
             <form id="judgingForm" onsubmit="event.preventDefault(); submitEvaluation();" class="space-y-8">
                 
@@ -302,7 +303,7 @@
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                         </svg>
-                        Submit Evaluation & View Leaderboard
+                        Submit Evaluation & Save to Cloud
                     </button>
                     <button type="button" onclick="resetForm()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold py-3.5 px-6 rounded-xl transition flex items-center justify-center gap-2">
                         🔄 Reset Form
@@ -311,15 +312,16 @@
             </form>
         </div>
 
+        <!-- Leaderboard Results Tab -->
         <div id="tabContentResults" class="hidden space-y-6">
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                    <h2 class="text-lg font-bold text-slate-900">Live Submissions Leaderboard</h2>
-                    <p class="text-xs text-slate-500 mt-0.5">Ranked automatically by weighted score. Multiple judge evaluations per group are automatically combined and averaged in real-time.</p>
+                    <h2 class="text-lg font-bold text-slate-900">Cloud Synced Leaderboard</h2>
+                    <p class="text-xs text-slate-500 mt-0.5">Evaluations are permanently stored in your Firebase cloud database. Refreshing or returning after days will reload your scores securely.</p>
                 </div>
                 <div class="flex items-center gap-2">
                     <div id="syncStatus" class="text-xs font-medium text-amber-600 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200 flex items-center gap-1.5">
-                        <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span> Connecting...
+                        <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span> Connecting to Cloud...
                     </div>
                     <button onclick="loadSampleData()" class="text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-lg transition">
                         ⚡ Load Sample Data
@@ -399,20 +401,27 @@
 
     <!-- Footer -->
     <footer class="bg-white border-t border-slate-200 mt-12 py-4 text-center text-xs text-slate-400">
-        STEM Project Judging Portal &bull; Live Results & Aggregated Leaderboard
+        STEM Project Judging Portal &bull; Cloud Database Synced Leaderboard
     </footer>
 
     <script>
         let submissions = [];
         let db = null;
         let auth = null;
-        let currentUser = null;
         let unsubscribeLive = null;
 
+        // Custom Firebase configuration provided by user
+        const firebaseConfig = {
+            apiKey: "AIzaSyBvVSeiUrRfIkUnudblz6vpNYVXt-YFRzU",
+            authDomain: "judges2026stemday.firebaseapp.com",
+            projectId: "judges2026stemday",
+            storageBucket: "judges2026stemday.firebasestorage.app",
+            messagingSenderId: "247590366886",
+            appId: "1:247590366886:web:b4aa18b30fc53e2db18e67"
+        };
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'stem-judging-default';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
 
-        // Initialize Firebase on window load
+        // Initialize Firebase and real-time cloud data sync on window load
         window.onload = async function() {
             updateScores();
             
@@ -424,43 +433,43 @@
                     db = getFirestore(app);
                     auth = getAuth(app);
 
-                    // Authentication handler following mandatory rules
+                    // Authentication setup per mandatory instructions
                     if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                         await signInWithCustomToken(auth, __initial_auth_token);
                     } else {
                         await signInAnonymously(auth);
                     }
-
-                    currentUser = auth.currentUser;
                     
                     document.getElementById('syncStatus').innerHTML = `
-                        <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Live Synced
+                        <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Cloud Synced
                     `;
                     document.getElementById('syncStatus').className = "text-xs font-medium text-emerald-600 bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-200 flex items-center gap-1.5";
 
-                    // Attach real-time snapshot listener
+                    // Attach real-time snapshot listener using strict required Firestore path structure: artifacts/{appId}/public/data/submissions
                     const submissionsCol = collection(db, 'artifacts', appId, 'public', 'data', 'submissions');
                     const q = query(submissionsCol);
                     
                     unsubscribeLive = onSnapshot(q, (snapshot) => {
-                        submissions = [];
+                        const cloudSubmissions = [];
                         snapshot.forEach((docSnap) => {
-                            submissions.push({ firestoreId: docSnap.id, ...docSnap.data() });
+                            cloudSubmissions.push({ firestoreId: docSnap.id, ...docSnap.data() });
                         });
+                        
+                        submissions = cloudSubmissions;
                         document.getElementById('submissionCount').innerText = submissions.length;
                         renderLeaderboard();
                     }, (error) => {
                         console.error("Firestore sync error:", error);
-                        showToast("Live sync connection issue. Check console.", "error");
+                        document.getElementById('syncStatus').innerHTML = `⚠️ Sync Error (Check Console)`;
                     });
 
                 } catch (err) {
-                    console.error("Firebase initialization failed:", err);
-                    document.getElementById('syncStatus').innerHTML = `⚠️ Offline Mode`;
+                    console.error("Firebase connection failed:", err);
+                    document.getElementById('syncStatus').innerHTML = `⚠️ Cloud Connection Failed`;
                     document.getElementById('syncStatus').className = "text-xs font-medium text-rose-600 bg-rose-50 px-3 py-2 rounded-lg border border-rose-200";
                 }
             } else {
-                document.getElementById('syncStatus').innerHTML = `⚠️ Local Mode`;
+                document.getElementById('syncStatus').innerHTML = `⚠️ Missing Firebase Configuration`;
             }
         };
 
@@ -540,6 +549,7 @@
 
             const payload = {
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                dateString: new Date().toLocaleDateString(),
                 createdAt: Date.now(),
                 judgeName,
                 gradeDivision,
@@ -555,38 +565,29 @@
                 feedback
             };
 
-            if (db) {
-                try {
-                    const { collection, addDoc } = window.firebaseAppModules;
-                    if (auth && auth.currentUser) {
-                        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'submissions'), payload);
-                    } else {
-                        submissions.push(payload);
-                        document.getElementById('submissionCount').innerText = submissions.length;
-                        renderLeaderboard();
-                    }
-                } catch (e) {
-                    console.error("Error writing document: ", e);
-                    showToast("Error saving to cloud. Saved locally.", "error");
-                    submissions.push(payload);
-                    document.getElementById('submissionCount').innerText = submissions.length;
-                    renderLeaderboard();
-                }
-            } else {
-                submissions.push(payload);
-                document.getElementById('submissionCount').innerText = submissions.length;
-                renderLeaderboard();
+            // Guard against unauthenticated writes and write directly to Firestore database
+            if (!auth || !auth.currentUser) {
+                showToast("Error: Not authenticated with Firebase cloud.", "error");
+                return;
             }
-            
-            // Reset form for next entry
-            document.getElementById('judgingForm').reset();
-            updateScores();
 
-            showToast(`Success! Evaluation for "${projectTitle}" by ${judgeName} recorded.`, "success");
-            
-            setTimeout(() => {
-                switchTab('results');
-            }, 600);
+            try {
+                const { collection, addDoc } = window.firebaseAppModules;
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'submissions'), payload);
+                
+                // Reset form for next entry
+                document.getElementById('judgingForm').reset();
+                updateScores();
+
+                showToast(`Success! Evaluation for "${projectTitle}" saved to cloud database.`, "success");
+                
+                setTimeout(() => {
+                    switchTab('results');
+                }, 600);
+            } catch (e) {
+                console.error("Error writing document to Firestore: ", e);
+                showToast("Failed to save evaluation to cloud. Please try again.", "error");
+            }
         }
 
         function renderLeaderboard() {
@@ -597,8 +598,8 @@
                 container.innerHTML = `
                     <div class="bg-white p-12 rounded-2xl shadow-sm border border-slate-200 text-center space-y-3">
                         <div class="text-4xl">📊</div>
-                        <h3 class="font-bold text-slate-800 text-base">No evaluations submitted yet</h3>
-                        <p class="text-xs text-slate-500 max-w-sm mx-auto">Fill out the evaluation form on the first tab and submit to see live aggregated project scores and rankings here.</p>
+                        <h3 class="font-bold text-slate-800 text-base">No cloud evaluations found</h3>
+                        <p class="text-xs text-slate-500 max-w-sm mx-auto">Fill out the evaluation form on the first tab and submit. Your entries will be saved in Firebase and displayed here permanently.</p>
                         <button onclick="switchTab('evaluation')" class="mt-2 bg-brand-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-brand-700 transition">Go to Evaluation Form</button>
                     </div>
                 `;
@@ -645,10 +646,10 @@
                 let judgesHtml = item.evaluations.map((e, idx) => `
                     <div class="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100 space-y-1">
                         <div class="flex justify-between font-semibold text-slate-700">
-                            <span>Judge: ${e.judgeName}</span>
+                            <span>Judge: ${e.judgeName} <span class="text-[10px] text-slate-400 font-normal">(${e.dateString || ''} ${e.timestamp || ''})</span></span>
                             <div class="flex items-center gap-2">
                                 <span class="text-brand-600">Score: ${e.weightedScore.toFixed(1)}/10</span>
-                                ${e.firestoreId ? `<button onclick="deleteSingleEvaluation('${e.firestoreId}')" class="text-rose-400 hover:text-rose-600 text-[10px]" title="Delete this specific judge evaluation">&times;</button>` : ''}
+                                ${e.firestoreId ? `<button onclick="deleteSingleEvaluation('${e.firestoreId}')" class="text-rose-400 hover:text-rose-600 text-[10px]" title="Delete this specific evaluation">&times;</button>` : ''}
                             </div>
                         </div>
                         ${e.feedback ? `<p class="italic text-slate-500">💬 "${e.feedback}"</p>` : '<p class="text-slate-400 italic">No feedback provided.</p>'}
@@ -686,15 +687,11 @@
                 try {
                     const { doc, deleteDoc } = window.firebaseAppModules;
                     await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'submissions', firestoreId));
-                    showToast("Evaluation deleted.", "error");
+                    showToast("Evaluation deleted from cloud database.", "success");
                 } catch (e) {
                     console.error("Error deleting document:", e);
                     showToast("Failed to delete from cloud.", "error");
                 }
-            } else {
-                submissions = submissions.filter(s => s.firestoreId !== firestoreId);
-                document.getElementById('submissionCount').innerText = submissions.length;
-                renderLeaderboard();
             }
         }
 
@@ -708,19 +705,15 @@
                             await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'submissions', t.firestoreId));
                         }
                     }
-                    showToast("Group evaluations removed.", "error");
+                    showToast("Group evaluations removed from cloud database.", "success");
                 } catch (e) {
                     console.error("Error removing group:", e);
                 }
-            } else {
-                submissions = submissions.filter(s => !(s.gradeDivision === div && s.projectTitle === title));
-                document.getElementById('submissionCount').innerText = submissions.length;
-                renderLeaderboard();
             }
         }
 
         async function clearSubmissions() {
-            if (confirm("Are you sure you want to clear all recorded evaluation entries?")) {
+            if (confirm("Are you sure you want to delete all cloud evaluation entries from Firebase?")) {
                 if (db) {
                     try {
                         const { doc, deleteDoc } = window.firebaseAppModules;
@@ -729,17 +722,10 @@
                                 await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'submissions', s.firestoreId));
                             }
                         }
-                        submissions = [];
-                        renderLeaderboard();
-                        showToast("All submissions cleared.", "error");
+                        showToast("All cloud submissions cleared.", "success");
                     } catch (e) {
                         console.error("Error clearing submissions:", e);
                     }
-                } else {
-                    submissions = [];
-                    document.getElementById('submissionCount').innerText = 0;
-                    renderLeaderboard();
-                    showToast("All submissions cleared.", "error");
                 }
             }
         }
@@ -748,6 +734,7 @@
             const samplePayloads = [
                 {
                     timestamp: '10:14 AM',
+                    dateString: new Date().toLocaleDateString(),
                     createdAt: Date.now() - 3000,
                     judgeName: 'Mr. Jonathan',
                     gradeDivision: 'IG1',
@@ -758,6 +745,7 @@
                 },
                 {
                     timestamp: '10:18 AM',
+                    dateString: new Date().toLocaleDateString(),
                     createdAt: Date.now() - 2000,
                     judgeName: 'Ms. Uzma',
                     gradeDivision: 'IG1',
@@ -768,6 +756,7 @@
                 },
                 {
                     timestamp: '10:22 AM',
+                    dateString: new Date().toLocaleDateString(),
                     createdAt: Date.now() - 1000,
                     judgeName: 'Ms. Uzma',
                     gradeDivision: 'Y8A',
@@ -784,18 +773,13 @@
                     for (const sample of samplePayloads) {
                         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'submissions'), sample);
                     }
-                    showToast("Sample data loaded successfully!", "success");
-                    switchTab('results');
+                    showToast("Sample cloud data loaded successfully!", "success");
                 } catch (e) {
-                    console.error("Error loading sample data:", e);
+                    console.error("Error loading sample data to cloud:", e);
                 }
-            } else {
-                submissions = samplePayloads;
-                document.getElementById('submissionCount').innerText = submissions.length;
-                renderLeaderboard();
-                switchTab('results');
-                showToast("Sample data loaded successfully!", "success");
             }
+
+            switchTab('results');
         }
 
         function showToast(msg, type) {
