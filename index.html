@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STEM Project Judging Portal & Live Results</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, onSnapshot, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Expose Firebase modules globally for app logic
+        window.firebaseAppModules = {
+            initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged,
+            getFirestore, collection, addDoc, getDocs, deleteDoc, doc, onSnapshot, query
+        };
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-full flex flex-col justify-between">
+
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-5xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-3">
+            <div class="flex items-center space-x-3">
+                <div class="bg-brand-600 text-white p-2.5 rounded-xl shadow-md">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold text-slate-900 tracking-tight">STEM Project Judging Portal</h1>
+                    <p class="text-xs text-slate-500">Live Evaluation System & Leaderboard</p>
+                </div>
+            </div>
+            
+            <!-- Tab Navigation & Action Buttons -->
+            <div class="flex items-center gap-2 flex-wrap">
+                <div class="bg-slate-100 p-1 rounded-xl flex gap-1">
+                    <button id="tabBtnEval" onclick="switchTab('evaluation')" class="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-white text-slate-900 shadow-sm transition">📝 Evaluation Form</button>
+                    <button id="tabBtnResults" onclick="switchTab('results')" class="px-3.5 py-1.5 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition">📊 Live Leaderboard (<span id="submissionCount">0</span>)</button>
+                </div>
+                <button onclick="openRubricModal()" class="text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-lg transition">
+                    📖 Rubric Guide
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-3xl mx-auto px-4 py-8 w-full flex-grow">
+        
+        <!-- Toast Notification Box -->
+        <div id="toast" class="hidden mb-6 p-4 rounded-xl border flex items-center justify-between shadow-md transition-all duration-300">
+            <span id="toastMessage" class="text-sm font-medium"></span>
+            <button onclick="hideToast()" class="text-slate-400 hover:text-slate-600 font-bold">&times;</button>
+        </div>
+
+        <div id="tabContentEvaluation">
+            <form id="judgingForm" onsubmit="event.preventDefault(); submitEvaluation();" class="space-y-8">
+                
+                <!-- Section 1: Project Metadata -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                    <h2 class="text-lg font-bold text-slate-900 border-b border-slate-100 pb-3 flex items-center gap-2">
+                        <span class="bg-brand-100 text-brand-700 w-7 h-7 rounded-lg inline-flex items-center justify-center text-sm font-semibold">1</span>
+                        Judge & Project Information
+                    </h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Judge Name *</label>
+                            <select id="judgeName" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white">
+                                <option value="">Select Judge...</option>
+                                <option value="Mr. Jonathan">Mr. Jonathan</option>
+                                <option value="Ms. Uzma">Ms. Uzma</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Division / Grade Level *</label>
+                            <select id="gradeDivision" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white">
+                                <option value="">Select Division...</option>
+                                <option value="Y6A">Y6A</option>
+                                <option value="Y7A">Y7A</option>
+                                <option value="Y8A">Y8A</option>
+                                <option value="Y9A">Y9A</option>
+                                <option value="Y6LA">Y6LA</option>
+                                <option value="Y7LA">Y7LA</option>
+                                <option value="Y8LA">Y8LA</option>
+                                <option value="IG1">IG1</option>
+                                <option value="IG2">IG2</option>
+                            </select>
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Project Group *</label>
+                            <select id="projectTitle" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white">
+                                <option value="">Select Group...</option>
+                                <option value="Group 1">Group 1</option>
+                                <option value="Group 2">Group 2</option>
+                                <option value="Group 3">Group 3</option>
+                                <option value="Group 4">Group 4</option>
+                                <option value="Group 5">Group 5</option>
+                                <option value="Group 6">Group 6</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Score Overview Sticky Widget -->
+                <div class="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-5 rounded-2xl shadow-lg flex items-center justify-between">
+                    <div>
+                        <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Calculated Weighted Score</span>
+                        <div class="flex items-baseline gap-2 mt-1">
+                            <span id="liveScore" class="text-3xl font-extrabold text-brand-400">0.0</span>
+                            <span class="text-sm text-slate-400">/ 10 max</span>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Performance Tier</span>
+                        <div id="liveTier" class="text-sm font-bold text-amber-300 mt-1">Pending Evaluation</div>
+                    </div>
+                </div>
+
+                <!-- Section 2: Core Scoring Criteria -->
+                <div class="space-y-6">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <span class="bg-brand-100 text-brand-700 w-7 h-7 rounded-lg inline-flex items-center justify-center text-sm font-semibold">2</span>
+                            Core STEM Scoring Criteria
+                        </h2>
+                        <span class="text-xs text-slate-500 font-medium">Rate each category from 1 to 10</span>
+                    </div>
+
+                    <!-- Criteria 1 -->
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-3">
+                            <div>
+                                <h3 class="font-bold text-slate-900 text-base">1. Scientific Method / Engineering Design</h3>
+                                <p class="text-xs text-slate-500 mt-0.5">Hypothesis clarity, control variables, iteration, and prototyping rigor.</p>
+                            </div>
+                            <span class="bg-slate-100 text-slate-700 font-bold text-xs px-2.5 py-1 rounded-full whitespace-nowrap">Weight: 25%</span>
+                        </div>
+                        <div class="space-y-2">
+                            <div class="flex justify-between text-xs font-semibold text-slate-600">
+                                <span>Developing (1-3)</span>
+                                <span>Proficient (4-7)</span>
+                                <span>Mastery (8-10)</span>
+                            </div>
+                            <input type="range" id="c1" min="1" max="10" value="5" oninput="updateScores()" class="w-full accent-brand-600 cursor-pointer">
+                            <div class="flex justify-between text-sm font-bold text-brand-700">
+                                <span>Score: <span id="c1val">5</span> / 10</span>
+                                <span id="c1desc" class="text-xs text-slate-500 font-normal">Proficient</span>
+                            </div>
+                        </div>
+                        <div>
+                            <input type="text" id="c1comm" placeholder="Optional comments for Scientific Method..." class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        </div>
+                    </div>
+
+                    <!-- Criteria 2 -->
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-3">
+                            <div>
+                                <h3 class="font-bold text-slate-900 text-base">2. Depth of Understanding & Concepts</h3>
+                                <p class="text-xs text-slate-500 mt-0.5">Understanding of core STEM concepts, explaining the 'why' behind results.</p>
+                            </div>
+                            <span class="bg-slate-100 text-slate-700 font-bold text-xs px-2.5 py-1 rounded-full whitespace-nowrap">Weight: 25%</span>
+                        </div>
+                        <div class="space-y-2">
+                            <div class="flex justify-between text-xs font-semibold text-slate-600">
+                                <span>Developing (1-3)</span>
+                                <span>Proficient (4-7)</span>
+                                <span>Mastery (8-10)</span>
+                            </div>
+                            <input type="range" id="c2" min="1" max="10" value="5" oninput="updateScores()" class="w-full accent-brand-600 cursor-pointer">
+                            <div class="flex justify-between text-sm font-bold text-brand-700">
+                                <span>Score: <span id="c2val">5</span> / 10</span>
+                                <span id="c2desc" class="text-xs text-slate-500 font-normal">Proficient</span>
+                            </div>
+                        </div>
+                        <div>
+                            <input type="text" id="c2comm" placeholder="Optional comments for Understanding..." class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        </div>
+                    </div>
+
+                    <!-- Criteria 3 -->
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-3">
+                            <div>
+                                <h3 class="font-bold text-slate-900 text-base">3. Data Analysis & Conclusions</h3>
+                                <p class="text-xs text-slate-500 mt-0.5">Accuracy of data collection, proper charts, and sound, evidence-based conclusions.</p>
+                            </div>
+                            <span class="bg-slate-100 text-slate-700 font-bold text-xs px-2.5 py-1 rounded-full whitespace-nowrap">Weight: 20%</span>
+                        </div>
+                        <div class="space-y-2">
+                            <div class="flex justify-between text-xs font-semibold text-slate-600">
+                                <span>Developing (1-3)</span>
+                                <span>Proficient (4-7)</span>
+                                <span>Mastery (8-10)</span>
+                            </div>
+                            <input type="range" id="c3" min="1" max="10" value="5" oninput="updateScores()" class="w-full accent-brand-600 cursor-pointer">
+                            <div class="flex justify-between text-sm font-bold text-brand-700">
+                                <span>Score: <span id="c3val">5</span> / 10</span>
+                                <span id="c3desc" class="text-xs text-slate-500 font-normal">Proficient</span>
+                            </div>
+                        </div>
+                        <div>
+                            <input type="text" id="c3comm" placeholder="Optional comments for Data Analysis..." class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        </div>
+                    </div>
+
+                    <!-- Criteria 4 -->
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-3">
+                            <div>
+                                <h3 class="font-bold text-slate-900 text-base">4. Creativity & Innovation</h3>
+                                <p class="text-xs text-slate-500 mt-0.5">Originality of idea, creative resourcefulness, or unique real-world application.</p>
+                            </div>
+                            <span class="bg-slate-100 text-slate-700 font-bold text-xs px-2.5 py-1 rounded-full whitespace-nowrap">Weight: 20%</span>
+                        </div>
+                        <div class="space-y-2">
+                            <div class="flex justify-between text-xs font-semibold text-slate-600">
+                                <span>Developing (1-3)</span>
+                                <span>Proficient (4-7)</span>
+                                <span>Mastery (8-10)</span>
+                            </div>
+                            <input type="range" id="c4" min="1" max="10" value="5" oninput="updateScores()" class="w-full accent-brand-600 cursor-pointer">
+                            <div class="flex justify-between text-sm font-bold text-brand-700">
+                                <span>Score: <span id="c4val">5</span> / 10</span>
+                                <span id="c4desc" class="text-xs text-slate-500 font-normal">Proficient</span>
+                            </div>
+                        </div>
+                        <div>
+                            <input type="text" id="c4comm" placeholder="Optional comments for Creativity..." class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        </div>
+                    </div>
+
+                    <!-- Criteria 5 -->
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-3">
+                            <div>
+                                <h3 class="font-bold text-slate-900 text-base">5. Presentation & Communication</h3>
+                                <p class="text-xs text-slate-500 mt-0.5">Clarity, organization, and professional communication of the project display.</p>
+                            </div>
+                            <span class="bg-slate-100 text-slate-700 font-bold text-xs px-2.5 py-1 rounded-full whitespace-nowrap">Weight: 10%</span>
+                        </div>
+                        <div class="space-y-2">
+                            <div class="flex justify-between text-xs font-semibold text-slate-600">
+                                <span>Developing (1-3)</span>
+                                <span>Proficient (4-7)</span>
+                                <span>Mastery (8-10)</span>
+                            </div>
+                            <input type="range" id="c5" min="1" max="10" value="5" oninput="updateScores()" class="w-full accent-brand-600 cursor-pointer">
+                            <div class="flex justify-between text-sm font-bold text-brand-700">
+                                <span>Score: <span id="c5val">5</span> / 10</span>
+                                <span id="c5desc" class="text-xs text-slate-500 font-normal">Proficient</span>
+                            </div>
+                        </div>
+                        <div>
+                            <input type="text" id="c5comm" placeholder="Optional comments for Presentation..." class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Section 3: Qualitative Feedback & Final Decision -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                    <h2 class="text-lg font-bold text-slate-900 border-b border-slate-100 pb-3 flex items-center gap-2">
+                        <span class="bg-brand-100 text-brand-700 w-7 h-7 rounded-lg inline-flex items-center justify-center text-sm font-semibold">3</span>
+                        Qualitative Feedback
+                    </h2>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Constructive Student Feedback (Strengths & Growth Tips)</label>
+                            <textarea id="feedbackText" rows="3" placeholder="What was the project's greatest strength and one piece of advice for future improvement?" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex flex-col sm:flex-row gap-3 pt-2">
+                    <button type="submit" class="flex-1 bg-brand-600 hover:bg-brand-700 text-white font-bold py-3.5 px-6 rounded-xl shadow-md transition flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                        Submit Evaluation & View Leaderboard
+                    </button>
+                    <button type="button" onclick="resetForm()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold py-3.5 px-6 rounded-xl transition flex items-center justify-center gap-2">
+                        🔄 Reset Form
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <div id="tabContentResults" class="hidden space-y-6">
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-900">Live Submissions Leaderboard</h2>
+                    <p class="text-xs text-slate-500 mt-0.5">Ranked automatically by weighted score. Multiple judge evaluations per group are automatically combined and averaged in real-time.</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div id="syncStatus" class="text-xs font-medium text-amber-600 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200 flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span> Connecting...
+                    </div>
+                    <button onclick="loadSampleData()" class="text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-lg transition">
+                        ⚡ Load Sample Data
+                    </button>
+                    <button onclick="clearSubmissions()" class="text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-2 rounded-lg transition">
+                        🗑️ Clear All
+                    </button>
+                </div>
+            </div>
+
+            <!-- Leaderboard List -->
+            <div id="leaderboardList" class="space-y-4">
+                <!-- Populated dynamically via JS -->
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Rubric Guide Modal -->
+    <div id="rubricModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+        <div class="bg-white max-w-2xl w-full rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+            <div class="px-6 py-4 bg-slate-900 text-white flex justify-between items-center">
+                <h3 class="font-bold text-base">STEM Judging Rubric Matrix Reference</h3>
+                <button onclick="closeRubricModal()" class="text-slate-400 hover:text-white font-bold text-xl">&times;</button>
+            </div>
+            <div class="p-6 overflow-y-auto space-y-4 text-xs">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-200 bg-slate-50">
+                                <th class="p-2.5 font-bold text-slate-700">Criteria (Weight)</th>
+                                <th class="p-2.5 font-bold text-slate-700">Developing (1-3)</th>
+                                <th class="p-2.5 font-bold text-slate-700">Proficient (4-7)</th>
+                                <th class="p-2.5 font-bold text-slate-700">Mastery (8-10)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-slate-600">
+                            <tr>
+                                <td class="p-2.5 font-semibold">Scientific Method (25%)</td>
+                                <td class="p-2.5">Process unclear, missing key controls.</td>
+                                <td class="p-2.5">Logical steps, basic testing.</td>
+                                <td class="p-2.5">Rigorous, methodical testing & iteration.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-2.5 font-semibold">Understanding (25%)</td>
+                                <td class="p-2.5">Struggles with core concepts.</td>
+                                <td class="p-2.5">Solid grasp of underlying science.</td>
+                                <td class="p-2.5">Deep comprehension, explains complex 'why'.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-2.5 font-semibold">Data & Conclusions (20%)</td>
+                                <td class="p-2.5">Data missing/unsupported.</td>
+                                <td class="p-2.5">Basic charts, reasonable conclusions.</td>
+                                <td class="p-2.5">Comprehensive data, well-supported findings.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-2.5 font-semibold">Creativity (20%)</td>
+                                <td class="p-2.5">Traditional project, standard idea.</td>
+                                <td class="p-2.5">Fresh take or clever resource use.</td>
+                                <td class="p-2.5">Highly original problem solving.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-2.5 font-semibold">Presentation (10%)</td>
+                                <td class="p-2.5">Disorganized display.</td>
+                                <td class="p-2.5">Clear and structured.</td>
+                                <td class="p-2.5">Professionally polished & engaging.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="px-6 py-3 bg-slate-50 border-t border-slate-200 text-right">
+                <button onclick="closeRubricModal()" class="bg-slate-800 text-white font-semibold px-4 py-2 rounded-xl text-xs hover:bg-slate-900 transition">Got it, close guide</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 mt-12 py-4 text-center text-xs text-slate-400">
+        STEM Project Judging Portal &bull; Live Results & Aggregated Leaderboard
+    </footer>
+
+    <script>
+        let submissions = [];
+        let db = null;
+        let auth = null;
+        let currentUser = null;
+        let unsubscribeLive = null;
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'stem-judging-default';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+
+        // Initialize Firebase on window load
+        window.onload = async function() {
+            updateScores();
+            
+            if (firebaseConfig && window.firebaseAppModules) {
+                const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, getFirestore, collection, onSnapshot, query } = window.firebaseAppModules;
+                
+                try {
+                    const app = initializeApp(firebaseConfig);
+                    db = getFirestore(app);
+                    auth = getAuth(app);
+
+                    // Authentication handler following mandatory rules
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+
+                    currentUser = auth.currentUser;
+                    
+                    document.getElementById('syncStatus').innerHTML = `
+                        <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Live Synced
+                    `;
+                    document.getElementById('syncStatus').className = "text-xs font-medium text-emerald-600 bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-200 flex items-center gap-1.5";
+
+                    // Attach real-time snapshot listener (RULE 1: Strict Paths, RULE 2: No Complex Queries)
+                    const submissionsCol = collection(db, 'artifacts', appId, 'public', 'data', 'submissions');
+                    const q = query(submissionsCol);
+                    
+                    unsubscribeLive = onSnapshot(q, (snapshot) => {
+                        submissions = [];
+                        snapshot.forEach((docSnap) => {
+                            submissions.push({ firestoreId: docSnap.id, ...docSnap.data() });
+                        });
+                        document.getElementById('submissionCount').innerText = submissions.length;
+                        if (!document.getElementById('tabContentResults').classList.contains('hidden')) {
+                            renderLeaderboard();
+                        }
+                    }, (error) => {
+                        console.error("Firestore sync error:", error);
+                        showToast("Live sync connection issue. Check console.", "error");
+                    });
+
+                } catch (err) {
+                    console.error("Firebase initialization failed:", err);
+                    document.getElementById('syncStatus').innerHTML = `⚠️ Offline Mode`;
+                    document.getElementById('syncStatus').className = "text-xs font-medium text-rose-600 bg-rose-50 px-3 py-2 rounded-lg border border-rose-200";
+                }
+            } else {
+                document.getElementById('syncStatus').innerHTML = `⚠️ Local Mode`;
+            }
+        };
+
+        function switchTab(tab) {
+            const evalTab = document.getElementById('tabContentEvaluation');
+            const resTab = document.getElementById('tabContentResults');
+            const evalBtn = document.getElementById('tabBtnEval');
+            const resBtn = document.getElementById('tabBtnResults');
+
+            if (tab === 'evaluation') {
+                evalTab.classList.remove('hidden');
+                resTab.classList.add('hidden');
+                evalBtn.className = "px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-white text-slate-900 shadow-sm transition";
+                resBtn.className = "px-3.5 py-1.5 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition";
+            } else {
+                evalTab.classList.add('hidden');
+                resTab.classList.remove('hidden');
+                resBtn.className = "px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-white text-slate-900 shadow-sm transition";
+                evalBtn.className = "px-3.5 py-1.5 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition";
+                renderLeaderboard();
+            }
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function getDescriptor(val) {
+            if (val <= 3) return "Developing (1-3)";
+            if (val <= 7) return "Proficient (4-7)";
+            return "Mastery (8-10)";
+        }
+
+        function updateScores() {
+            const c1 = parseInt(document.getElementById('c1').value);
+            const c2 = parseInt(document.getElementById('c2').value);
+            const c3 = parseInt(document.getElementById('c3').value);
+            const c4 = parseInt(document.getElementById('c4').value);
+            const c5 = parseInt(document.getElementById('c5').value);
+
+            document.getElementById('c1val').innerText = c1;
+            document.getElementById('c1desc').innerText = getDescriptor(c1);
+
+            document.getElementById('c2val').innerText = c2;
+            document.getElementById('c2desc').innerText = getDescriptor(c2);
+
+            document.getElementById('c3val').innerText = c3;
+            document.getElementById('c3desc').innerText = getDescriptor(c3);
+
+            document.getElementById('c4val').innerText = c4;
+            document.getElementById('c4desc').innerText = getDescriptor(c4);
+
+            document.getElementById('c5val').innerText = c5;
+            document.getElementById('c5desc').innerText = getDescriptor(c5);
+
+            // Weighted calculation (Weights: 0.25, 0.25, 0.20, 0.20, 0.10)
+            const weightedSum = (c1 * 0.25) + (c2 * 0.25) + (c3 * 0.20) + (c4 * 0.20) + (c5 * 0.10);
+            document.getElementById('liveScore').innerText = weightedSum.toFixed(1);
+
+            let tier = "Participation & Encouragement";
+            let colorClass = "text-amber-300";
+            if (weightedSum >= 8.0) {
+                tier = "Top Tier / Medal Contender 🏆";
+                colorClass = "text-emerald-300";
+            } else if (weightedSum >= 4.0) {
+                tier = "Strong Competitor ⭐";
+                colorClass = "text-blue-300";
+            }
+            const tierEl = document.getElementById('liveTier');
+            tierEl.innerText = tier;
+            tierEl.className = `text-sm font-bold mt-1 ${colorClass}`;
+        }
+
+        async function submitEvaluation() {
+            const judgeName = document.getElementById('judgeName').value;
+            const projectTitle = document.getElementById('projectTitle').value;
+            const gradeDivision = document.getElementById('gradeDivision').value;
+            const score = parseFloat(document.getElementById('liveScore').innerText);
+            const feedback = document.getElementById('feedbackText').value;
+
+            const payload = {
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                createdAt: Date.now(),
+                judgeName,
+                gradeDivision,
+                projectTitle,
+                weightedScore: score,
+                criteriaScores: {
+                    scientificMethod: parseInt(document.getElementById('c1').value),
+                    understanding: parseInt(document.getElementById('c2').value),
+                    dataAnalysis: parseInt(document.getElementById('c3').value),
+                    creativity: parseInt(document.getElementById('c4').value),
+                    presentation: parseInt(document.getElementById('c5').value)
+                },
+                feedback
+            };
+
+            if (db) {
+                try {
+                    const { collection, addDoc } = window.firebaseAppModules;
+                    if (auth && auth.currentUser) {
+                        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'submissions'), payload);
+                    } else {
+                        submissions.push(payload); // Fallback local push
+                    }
+                } catch (e) {
+                    console.error("Error writing document: ", e);
+                    showToast("Error saving to cloud. Saved locally.", "error");
+                    submissions.push(payload);
+                }
+            } else {
+                submissions.push(payload);
+            }
+
+            document.getElementById('submissionCount').innerText = submissions.length;
+            
+            // Reset form for next entry
+            document.getElementById('judgingForm').reset();
+            updateScores();
+
+            showToast(`Success! Evaluation for "${projectTitle}" by ${judgeName} recorded.`, "success");
+            
+            setTimeout(() => {
+                switchTab('results');
+            }, 600);
+        }
+
+        function renderLeaderboard() {
+            const container = document.getElementById('leaderboardList');
+            if (submissions.length === 0) {
+                container.innerHTML = `
+                    <div class="bg-white p-12 rounded-2xl shadow-sm border border-slate-200 text-center space-y-3">
+                        <div class="text-4xl">📊</div>
+                        <h3 class="font-bold text-slate-800 text-base">No evaluations submitted yet</h3>
+                        <p class="text-xs text-slate-500 max-w-sm mx-auto">Fill out the evaluation form on the first tab and submit to see live aggregated project scores and rankings here.</p>
+                        <button onclick="switchTab('evaluation')" class="mt-2 bg-brand-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-brand-700 transition">Go to Evaluation Form</button>
+                    </div>
+                `;
+                return;
+            }
+
+            // Group submissions by projectTitle & gradeDivision
+            const groupMap = {};
+            submissions.forEach(sub => {
+                const key = `${sub.gradeDivision}-${sub.projectTitle}`;
+                if (!groupMap[key]) {
+                    groupMap[key] = {
+                        gradeDivision: sub.gradeDivision,
+                        projectTitle: sub.projectTitle,
+                        evaluations: []
+                    };
+                }
+                groupMap[key].evaluations.push(sub);
+            });
+
+            // Calculate averages for each group
+            const aggregated = Object.values(groupMap).map(g => {
+                const count = g.evaluations.length;
+                const avgScore = g.evaluations.reduce((sum, e) => sum + e.weightedScore, 0) / count;
+                return {
+                    gradeDivision: g.gradeDivision,
+                    projectTitle: g.projectTitle,
+                    averageScore: avgScore,
+                    evaluations: g.evaluations
+                };
+            });
+
+            // Sort aggregated groups by average score descending
+            aggregated.sort((a, b) => b.averageScore - a.averageScore);
+
+            let html = '';
+            aggregated.forEach((item, index) => {
+                let badgeColor = "bg-amber-100 text-amber-800 border-amber-200";
+                let rankIcon = `#${index + 1}`;
+                if (index === 0) { rankIcon = "🥇 1st"; badgeColor = "bg-emerald-100 text-emerald-800 border-emerald-200"; }
+                else if (index === 1) { rankIcon = "🥈 2nd"; badgeColor = "bg-blue-100 text-blue-800 border-blue-200"; }
+                else if (index === 2) { rankIcon = "🥉 3rd"; badgeColor = "bg-purple-100 text-purple-800 border-purple-200"; }
+
+                let judgesHtml = item.evaluations.map((e, idx) => `
+                    <div class="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100 space-y-1">
+                        <div class="flex justify-between font-semibold text-slate-700">
+                            <span>Judge: ${e.judgeName}</span>
+                            <div class="flex items-center gap-2">
+                                <span class="text-brand-600">Score: ${e.weightedScore.toFixed(1)}/10</span>
+                                ${e.firestoreId ? `<button onclick="deleteSingleEvaluation('${e.firestoreId}')" class="text-rose-400 hover:text-rose-600 text-[10px]" title="Delete this specific judge evaluation">&times;</button>` : ''}
+                            </div>
+                        </div>
+                        ${e.feedback ? `<p class="italic text-slate-500">💬 "${e.feedback}"</p>` : '<p class="text-slate-400 italic">No feedback provided.</p>'}
+                    </div>
+                `).join('');
+
+                html += `
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div class="space-y-3 w-full">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <span class="px-2.5 py-1 rounded-full text-xs font-bold border ${badgeColor}">${rankIcon}</span>
+                                <span class="bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded text-xs font-semibold">${item.gradeDivision}</span>
+                                <span class="bg-brand-50 text-brand-700 px-2.5 py-0.5 rounded text-xs font-bold">${item.projectTitle}</span>
+                                <span class="text-xs text-slate-400">Evaluated by ${item.evaluations.length} judge(s)</span>
+                            </div>
+                            <div class="space-y-2">
+                                ${judgesHtml}
+                            </div>
+                        </div>
+                        <div class="text-right flex sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-100 min-w-[120px]">
+                            <div>
+                                <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Average Score</span>
+                                <div class="text-2xl font-extrabold text-brand-600">${item.averageScore.toFixed(1)}<span class="text-xs text-slate-400 font-normal">/10</span></div>
+                            </div>
+                            <button onclick="deleteGroupSubmissions('${item.gradeDivision}', '${item.projectTitle}')" class="text-xs text-rose-500 hover:text-rose-700 font-semibold mt-2">Remove Group</button>
+                        </div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        async function deleteSingleEvaluation(firestoreId) {
+            if (db && firestoreId) {
+                try {
+                    const { doc, deleteDoc } = window.firebaseAppModules;
+                    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'submissions', firestoreId));
+                    showToast("Evaluation deleted.", "error");
+                } catch (e) {
+                    console.error("Error deleting document:", e);
+                    showToast("Failed to delete from cloud.", "error");
+                }
+            } else {
+                submissions = submissions.filter(s => s.firestoreId !== firestoreId);
+                renderLeaderboard();
+            }
+        }
+
+        async function deleteGroupSubmissions(div, title) {
+            const targets = submissions.filter(s => s.gradeDivision === div && s.projectTitle === title);
+            if (db) {
+                try {
+                    const { doc, deleteDoc } = window.firebaseAppModules;
+                    for (const t of targets) {
+                        if (t.firestoreId) {
+                            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'submissions', t.firestoreId));
+                        }
+                    }
+                    showToast("Group evaluations removed.", "error");
+                } catch (e) {
+                    console.error("Error removing group:", e);
+                }
+            } else {
+                submissions = submissions.filter(s => !(s.gradeDivision === div && s.projectTitle === title));
+                renderLeaderboard();
+            }
+        }
+
+        async function clearSubmissions() {
+            if (confirm("Are you sure you want to clear all recorded evaluation entries?")) {
+                if (db) {
+                    try {
+                        const { doc, deleteDoc } = window.firebaseAppModules;
+                        for (const s of submissions) {
+                            if (s.firestoreId) {
+                                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'submissions', s.firestoreId));
+                            }
+                        }
+                        submissions = [];
+                        renderLeaderboard();
+                        showToast("All submissions cleared.", "error");
+                    } catch (e) {
+                        console.error("Error clearing submissions:", e);
+                    }
+                } else {
+                    submissions = [];
+                    document.getElementById('submissionCount').innerText = 0;
+                    renderLeaderboard();
+                    showToast("All submissions cleared.", "error");
+                }
+            }
+        }
+
+        async function loadSampleData() {
+            const samplePayloads = [
+                {
+                    timestamp: '10:14 AM',
+                    createdAt: Date.now() - 3000,
+                    judgeName: 'Mr. Jonathan',
+                    gradeDivision: 'IG1',
+                    projectTitle: 'Group 1',
+                    weightedScore: 9.2,
+                    criteriaScores: { scientificMethod: 10, understanding: 9, dataAnalysis: 9, creativity: 9, presentation: 8 },
+                    feedback: 'Exceptional lab testing controls and real-world impact potential!'
+                },
+                {
+                    timestamp: '10:18 AM',
+                    createdAt: Date.now() - 2000,
+                    judgeName: 'Ms. Uzma',
+                    gradeDivision: 'IG1',
+                    projectTitle: 'Group 1',
+                    weightedScore: 8.8,
+                    criteriaScores: { scientificMethod: 9, understanding: 9, dataAnalysis: 8, creativity: 9, presentation: 9 },
+                    feedback: 'Very thorough testing data and confident explanations.'
+                },
+                {
+                    timestamp: '10:22 AM',
+                    createdAt: Date.now() - 1000,
+                    judgeName: 'Ms. Uzma',
+                    gradeDivision: 'Y8A',
+                    projectTitle: 'Group 3',
+                    weightedScore: 8.4,
+                    criteriaScores: { scientificMethod: 8, understanding: 9, dataAnalysis: 8, creativity: 9, presentation: 8 },
+                    feedback: 'Clever use of components and clear data logs over 30 days.'
+                }
+            ];
+
+            if (db) {
+                try {
+                    const { collection, addDoc } = window.firebaseAppModules;
+                    for (const sample of samplePayloads) {
+                        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'submissions'), sample);
+                    }
+                    showToast("Sample data loaded successfully!", "success");
+                    switchTab('results');
+                } catch (e) {
+                    console.error("Error loading sample data:", e);
+                }
+            } else {
+                submissions = samplePayloads;
+                document.getElementById('submissionCount').innerText = submissions.length;
+                renderLeaderboard();
+                switchTab('results');
+                showToast("Sample data loaded successfully!", "success");
+            }
+        }
+
+        function showToast(msg, type) {
+            const toast = document.getElementById('toast');
+            const msgEl = document.getElementById('toastMessage');
+            msgEl.innerText = msg;
+            if (type === 'success') {
+                toast.className = "mb-6 p-4 rounded-xl border flex items-center justify-between shadow-md transition-all duration-300 bg-brand-50 border-brand-200 text-brand-800";
+            } else {
+                toast.className = "mb-6 p-4 rounded-xl border flex items-center justify-between shadow-md transition-all duration-300 bg-rose-50 border-rose-200 text-rose-800";
+            }
+            toast.classList.remove('hidden');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function hideToast() {
+            document.getElementById('toast').classList.add('hidden');
+        }
+
+        function resetForm() {
+            if (confirm("Are you sure you want to clear current form inputs?")) {
+                document.getElementById('judgingForm').reset();
+                updateScores();
+                hideToast();
+            }
+        }
+
+        function openRubricModal() {
+            document.getElementById('rubricModal').classList.remove('hidden');
+            document.getElementById('rubricModal').classList.add('flex');
+        }
+
+        function closeRubricModal() {
+            document.getElementById('rubricModal').classList.remove('flex');
+            document.getElementById('rubricModal').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
