@@ -410,7 +410,14 @@
         let unsubscribeLive = null;
 
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'stem-judging-default';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const firebaseConfig = {
+  apiKey: "AIzaSyBvVSeiUrRfIkUnudblz6vpNYVXt-YFRzU",
+  authDomain: "judges2026stemday.firebaseapp.com",
+  projectId: "judges2026stemday",
+  storageBucket: "judges2026stemday.firebasestorage.app",
+  messagingSenderId: "247590366886",
+  appId: "1:247590366886:web:b4aa18b30fc53e2db18e67"
+};
 
         // Initialize Firebase on window load
         window.onload = async function() {
