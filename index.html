@@ -713,22 +713,31 @@
         }
 
         async function clearSubmissions() {
-            if (confirm("Are you sure you want to delete all cloud evaluation entries from Firebase?")) {
-                if (db) {
-                    try {
-                        const { doc, deleteDoc } = window.firebaseAppModules;
-                        for (const s of submissions) {
-                            if (s.firestoreId) {
-                                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'submissions', s.firestoreId));
-                            }
-                        }
-                        showToast("All cloud submissions cleared.", "success");
-                    } catch (e) {
-                        console.error("Error clearing submissions:", e);
+    const password = prompt("Enter the administrator password to clear all data:");
+    if (password === null) return; // User cancelled the prompt
+
+    if (password !== "12345") {
+        showToast("Incorrect password. Action cancelled.", "error");
+        return;
+    }
+
+    if (confirm("WARNING: This will permanently delete ALL cloud evaluation entries from Firebase. Are you absolutely sure?")) {
+        if (db) {
+            try {
+                const { doc, deleteDoc } = window.firebaseAppModules;
+                for (const s of submissions) {
+                    if (s.firestoreId) {
+                        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'submissions', s.firestoreId));
                     }
                 }
+                showToast("All cloud submissions cleared.", "success");
+            } catch (e) {
+                console.error("Error clearing submissions:", e);
+                showToast("Failed to clear cloud submissions.", "error");
             }
         }
+    }
+}
 
         async function loadSampleData() {
             const samplePayloads = [
