@@ -232,7 +232,7 @@
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.4.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/11.4.1/firebase-firestore.js";
 
-        window.firebaseAppModules = { collection, addDoc, deleteDoc, doc };
+        window.firebaseAppModules = { collection, addDoc, deleteDoc, doc, getFirestore };
 
         const firebaseConfig = {
             apiKey: "AIzaSyBvVSeiUrRfIkUnudblz6vpNYVXt-YFRzU",
@@ -243,25 +243,25 @@
             appId: "1:247590366886:web:b4aa18b30fc53e2db18e67"
         };
 
-        let db = null;
-        let auth = null;
-        let submissions = [];
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
         const appId = 'stem-judging-portal-default';
+
+        window.db = db;
+        window.appId = appId;
+        window.submissions = [];
 
         async function initFirebase() {
             try {
-                const app = initializeApp(firebaseConfig);
-                auth = getAuth(app);
-                db = getFirestore(app);
-
                 await signInAnonymously(auth);
 
                 // Subscribe to real-time updates
                 const submissionsRef = collection(db, 'artifacts', appId, 'public', 'data', 'submissions');
                 onSnapshot(submissionsRef, (snapshot) => {
-                    submissions = [];
+                    window.submissions = [];
                     snapshot.forEach((docSnap) => {
-                        submissions.push({ firestoreId: docSnap.id, ...docSnap.data() });
+                        window.submissions.push({ firestoreId: docSnap.id, ...docSnap.data() });
                     });
                     renderLeaderboard();
                 }, (error) => {
@@ -269,14 +269,11 @@
                 });
 
             } catch (err) {
-                console.error("Firebase initialization failed:", err);
+                console.error("Firebase auth/sync failed:", err);
             }
         }
 
         initFirebase();
-        window.db = db;
-        window.appId = appId;
-        window.submissions = submissions;
     </script>
 
     <script>
@@ -348,6 +345,11 @@
         }
 
         async function submitEvaluation() {
+            if (!window.db || !window.firebaseAppModules) {
+                showToast("Database connection not ready. Please wait a moment and try again.", "error");
+                return;
+            }
+
             const judgeName = document.getElementById('judgeName').value;
             const projectTitle = document.getElementById('projectTitle').value;
             const gradeDivision = document.getElementById('gradeDivision').value;
@@ -372,25 +374,21 @@
                 feedback
             };
 
-            if (window.db && window.firebaseAppModules) {
-                try {
-                    const { collection, addDoc } = window.firebaseAppModules;
-                    await addDoc(collection(window.db, 'artifacts', window.appId, 'public', 'data', 'submissions'), payload);
-                    
-                    document.getElementById('judgingForm').reset();
-                    updateScores();
+            try {
+                const { collection, addDoc } = window.firebaseAppModules;
+                await addDoc(collection(window.db, 'artifacts', window.appId, 'public', 'data', 'submissions'), payload);
+                
+                document.getElementById('judgingForm').reset();
+                updateScores();
 
-                    showToast(`Success! Evaluation for "${projectTitle}" saved to cloud database.`, "success");
-                    
-                    setTimeout(() => {
-                        switchTab('results');
-                    }, 600);
-                } catch (e) {
-                    console.error("Error writing document to Firestore: ", e);
-                    showToast("Failed to save evaluation to cloud. Please check your Firebase rules.", "error");
-                }
-            } else {
-                showToast("Database connection not ready.", "error");
+                showToast(`Success! Evaluation for "${projectTitle}" saved to cloud database.`, "success");
+                
+                setTimeout(() => {
+                    switchTab('results');
+                }, 600);
+            } catch (e) {
+                console.error("Error writing document to Firestore: ", e);
+                showToast("Failed to save evaluation to cloud. Please check your Firebase Firestore Rules.", "error");
             }
         }
 
@@ -398,7 +396,9 @@
             const container = document.getElementById('leaderboardList');
             if (!container) return;
             
-            if (window.submissions.length === 0) {
+            const submissions = window.submissions || [];
+
+            if (submissions.length === 0) {
                 container.innerHTML = `
                     <div class="bg-white p-12 rounded-2xl shadow-sm border border-slate-200 text-center space-y-3">
                         <div class="text-4xl">📊</div>
@@ -411,7 +411,7 @@
             }
 
             const groupMap = {};
-            window.submissions.forEach(sub => {
+            submissions.forEach(sub => {
                 const key = `${sub.gradeDivision}-${sub.projectTitle}`;
                 if (!groupMap[key]) {
                     groupMap[key] = {
@@ -497,7 +497,8 @@
         }
 
         async function deleteGroupSubmissions(div, title) {
-            const targets = window.submissions.filter(s => s.gradeDivision === div && s.projectTitle === title);
+            const submissions = window.submissions || [];
+            const targets = submissions.filter(s => s.gradeDivision === div && s.projectTitle === title);
             if (window.db) {
                 try {
                     const { doc, deleteDoc } = window.firebaseAppModules;
@@ -526,7 +527,8 @@
                 if (window.db) {
                     try {
                         const { doc, deleteDoc } = window.firebaseAppModules;
-                        for (const s of window.submissions) {
+                        const submissions = window.submissions || [];
+                        for (const s of submissions) {
                             if (s.firestoreId) {
                                 await deleteDoc(doc(window.db, 'artifacts', window.appId, 'public', 'data', 'submissions', s.firestoreId));
                             }
