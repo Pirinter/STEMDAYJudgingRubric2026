@@ -738,42 +738,7 @@
     }
 }
 
-        async function loadSampleData() {
-            const samplePayloads = [
-                {
-                    timestamp: '10:14 AM',
-                    dateString: new Date().toLocaleDateString(),
-                    createdAt: Date.now() - 3000,
-                    judgeName: 'Mr. Jonathan',
-                    gradeDivision: 'IG1',
-                    projectTitle: 'Group 1',
-                    weightedScore: 9.2,
-                    criteriaScores: { scientificMethod: 10, understanding: 9, dataAnalysis: 9, creativity: 9, presentation: 8 },
-                    feedback: 'Exceptional lab testing controls and real-world impact potential!'
-                },
-                {
-                    timestamp: '10:18 AM',
-                    dateString: new Date().toLocaleDateString(),
-                    createdAt: Date.now() - 2000,
-                    judgeName: 'Ms. Uzma',
-                    gradeDivision: 'IG1',
-                    projectTitle: 'Group 1',
-                    weightedScore: 8.8,
-                    criteriaScores: { scientificMethod: 9, understanding: 9, dataAnalysis: 8, creativity: 9, presentation: 9 },
-                    feedback: 'Very thorough testing data and confident explanations.'
-                },
-                {
-                    timestamp: '10:22 AM',
-                    dateString: new Date().toLocaleDateString(),
-                    createdAt: Date.now() - 1000,
-                    judgeName: 'Ms. Uzma',
-                    gradeDivision: 'Y8A',
-                    projectTitle: 'Group 3',
-                    weightedScore: 8.4,
-                    criteriaScores: { scientificMethod: 8, understanding: 9, dataAnalysis: 8, creativity: 9, presentation: 8 },
-                    feedback: 'Clever use of components and clear data logs over 30 days.'
-                }
-            ];
+       
 
             if (db) {
                 try {
